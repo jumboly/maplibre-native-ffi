@@ -275,3 +275,95 @@ function(mln_ffi_add_c_api_test)
   endif()
   set_property(TEST c-api PROPERTY ENVIRONMENT ${test_environment})
 endfunction()
+
+# The CRS math suite compiles src/crs sources directly instead of linking
+# maplibre_native_c: the layer's contract is to be maplibre-independent pure
+# math, and keeping mbgl and the public C headers off this target's include
+# path turns an accidental dependency into a compile error. Must run after
+# mln_ffi_add_c_api_test(), which provides the unity target.
+function(mln_ffi_add_crs_test)
+  get_target_property(test_supported mln_ffi_platform_dependencies
+                      MLN_FFI_TEST_SUPPORTED)
+  if(NOT test_supported)
+    return()
+  endif()
+
+  # Globbing keeps a newly added *_tests.cpp in the build without a second
+  # edit here; CONFIGURE_DEPENDS reruns the glob when the directory changes.
+  file(GLOB crs_test_sources CONFIGURE_DEPENDS
+       ${PROJECT_SOURCE_DIR}/src/crs/tests/*_tests.cpp)
+
+  # Each *_tests.cpp reaches the runner through one run_<file>() call in
+  # main.cpp; the same text-match contract as the C API suite above, so tests
+  # a file defines but main.cpp never calls fail the configure.
+  file(READ ${PROJECT_SOURCE_DIR}/src/crs/tests/main.cpp crs_main_contents)
+  string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" crs_main_contents
+         "${crs_main_contents}")
+  string(REGEX REPLACE "//[^\n]*" "" crs_main_contents "${crs_main_contents}")
+  string(REGEX REPLACE "\"([^\"\\\\]|\\\\.)*\"" "" crs_main_contents
+         "${crs_main_contents}")
+  foreach(crs_test_source IN LISTS crs_test_sources)
+    get_filename_component(crs_test_name ${crs_test_source} NAME_WE)
+    if(NOT crs_main_contents MATCHES "run_${crs_test_name}\\(\\)")
+      message(
+        FATAL_ERROR
+          "src/crs/tests/${crs_test_name}.cpp defines tests that never run: "
+          "declare run_${crs_test_name}(void) in src/crs/tests/crs_tests.hpp "
+          "and call it from src/crs/tests/main.cpp.")
+    endif()
+  endforeach()
+
+  add_executable(mln_ffi_crs_tests)
+  mln_ffi_target_project_sources(
+    mln_ffi_crs_tests ${PROJECT_SOURCE_DIR}/src/crs/tests/main.cpp
+    ${crs_test_sources} ${PROJECT_SOURCE_DIR}/src/crs/homography.cpp)
+  set_target_properties(
+    mln_ffi_crs_tests
+    PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS OFF)
+  target_include_directories(
+    mln_ffi_crs_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/crs/tests)
+  target_link_libraries(mln_ffi_crs_tests PRIVATE unity::framework)
+
+  # Same registration-contract enforcement as the C API suite: a test no
+  # RUN_TEST references is an unused function in its anonymous namespace.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(mln_ffi_crs_tests PRIVATE -Werror=unused-function)
+  elseif(MSVC)
+    target_compile_options(mln_ffi_crs_tests PRIVATE /we4505)
+  endif()
+
+  get_target_property(test_link_options mln_ffi_platform_dependencies
+                      MLN_FFI_TEST_LINK_OPTIONS)
+  if(test_link_options)
+    target_link_options(mln_ffi_crs_tests PRIVATE ${test_link_options})
+  endif()
+
+  if(EMSCRIPTEN)
+    # Pure computation: no canvas, fixtures, or cross-origin isolation, so
+    # unlike the C API suite this one runs under plain node.
+    target_link_options(
+      mln_ffi_crs_tests
+      PRIVATE "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1")
+    find_program(MLN_FFI_NODE_EXECUTABLE node REQUIRED)
+    add_test(
+      NAME crs-math
+      COMMAND "${MLN_FFI_NODE_EXECUTABLE}" $<TARGET_FILE:mln_ffi_crs_tests>)
+    return()
+  endif()
+
+  if(CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS)$")
+    add_test(
+      NAME crs-math
+      COMMAND
+        bash ${PROJECT_SOURCE_DIR}/scripts/run-ios-simulator-test.sh
+        $<TARGET_FILE:mln_ffi_crs_tests>)
+    if(CMAKE_SYSTEM_NAME STREQUAL "tvOS")
+      set_property(
+        TEST crs-math
+        PROPERTY ENVIRONMENT "MLN_FFI_SIMULATOR_RUNTIME=tvOS")
+    endif()
+  else()
+    add_test(NAME crs-math COMMAND mln_ffi_crs_tests)
+  endif()
+endfunction()
