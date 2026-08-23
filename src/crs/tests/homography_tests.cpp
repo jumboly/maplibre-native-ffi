@@ -19,17 +19,21 @@ using mln::crs::solve_homography_4pt;
 
 using Quad = std::array<Point2, 4>;
 
+// Aggregate helper: keeps the many coordinate literals below readable while
+// satisfying clang-tidy's designated-initializer rule at a single site.
+constexpr auto pt(double pos_x, double pos_y) -> Point2 {
+  return Point2{.x = pos_x, .y = pos_y};
+}
+
 // MVT tile-local corner coordinates (extent 8192), the src quad every
 // per-tile homography in this project is solved against.
 constexpr Quad kTileCorners = {
-  Point2{0.0, 0.0}, Point2{8192.0, 0.0}, Point2{8192.0, 8192.0},
-  Point2{0.0, 8192.0}
+  pt(0.0, 0.0), pt(8192.0, 0.0), pt(8192.0, 8192.0), pt(0.0, 8192.0)
 };
 
 void test_reproduces_the_four_corners_exactly() {
   const Quad dst = {
-    Point2{-0.51, 0.32}, Point2{-0.29, 0.335}, Point2{-0.28, 0.11},
-    Point2{-0.52, 0.12}
+    pt(-0.51, 0.32), pt(-0.29, 0.335), pt(-0.28, 0.11), pt(-0.52, 0.12)
   };
   const auto homography = solve_homography_4pt(kTileCorners, dst);
   TEST_ASSERT_TRUE(homography.has_value());
@@ -41,10 +45,10 @@ void test_reproduces_the_four_corners_exactly() {
 }
 
 auto affine_reference(Point2 point) -> Point2 {
-  return Point2{
-    .x = 0.5 + (2e-5 * point.x) + (1e-6 * point.y),
-    .y = -0.25 + (-1e-6 * point.x) + (2e-5 * point.y),
-  };
+  return pt(
+    0.5 + (2e-5 * point.x) + (1e-6 * point.y),
+    -0.25 + (-1e-6 * point.x) + (2e-5 * point.y)
+  );
 }
 
 void test_affine_correspondence_yields_a_linear_map() {
@@ -57,7 +61,7 @@ void test_affine_correspondence_yields_a_linear_map() {
   TEST_ASSERT_TRUE(homography.has_value());
   TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, (*homography)[6]);
   TEST_ASSERT_DOUBLE_WITHIN(1e-12, 0.0, (*homography)[7]);
-  const Point2 probe{1234.0, 5678.0};
+  const Point2 probe = pt(1234.0, 5678.0);
   const Point2 mapped = apply_homography(*homography, probe);
   const Point2 expected = affine_reference(probe);
   TEST_ASSERT_DOUBLE_WITHIN(1e-12, expected.x, mapped.x);
@@ -66,7 +70,7 @@ void test_affine_correspondence_yields_a_linear_map() {
 
 void test_collinear_points_are_rejected_as_degenerate() {
   const Quad collinear = {
-    Point2{0.0, 0.0}, Point2{1.0, 1.0}, Point2{2.0, 2.0}, Point2{3.0, 3.0}
+    pt(0.0, 0.0), pt(1.0, 1.0), pt(2.0, 2.0), pt(3.0, 3.0)
   };
   TEST_ASSERT_FALSE(solve_homography_4pt(collinear, collinear).has_value());
   // A degenerate dst quad alone must also be rejected: it maps the tile onto
@@ -82,10 +86,10 @@ void test_degeneracy_detection_is_scale_invariant() {
     Quad scaled_collinear{};
     Quad scaled_corners{};
     for (std::size_t i = 0; i < 4; ++i) {
-      const double along = static_cast<double>(i);
-      scaled_collinear.at(i) = Point2{along * scale, along * scale};
+      const auto along = static_cast<double>(i);
+      scaled_collinear.at(i) = pt(along * scale, along * scale);
       scaled_corners.at(i) =
-        Point2{kTileCorners.at(i).x * scale, kTileCorners.at(i).y * scale};
+        pt(kTileCorners.at(i).x * scale, kTileCorners.at(i).y * scale);
     }
     TEST_ASSERT_FALSE(
       solve_homography_4pt(scaled_corners, scaled_collinear).has_value()
@@ -101,18 +105,17 @@ auto smooth_reference(Point2 point) -> Point2 {
   // composition, evaluated on global (multi-tile) coordinates.
   const double gx = point.x / 8192.0;
   const double gy = point.y / 8192.0;
-  return Point2{
-    .x = gx + (0.001 * gy * gy) + (0.0005 * gx * gy),
-    .y = gy + (0.002 * gx * gx) - (0.0003 * gx * gy),
-  };
+  return pt(
+    gx + (0.001 * gy * gy) + (0.0005 * gx * gy),
+    gy + (0.002 * gx * gx) - (0.0003 * gx * gy)
+  );
 }
 
 void test_adjacent_tiles_map_their_shared_edge_onto_one_line() {
   // Tile A spans x in [0, 8192], tile B spans x in [8192, 16384] (global
   // coordinates). Both are solved from the same tile-local corner quad.
   const Quad global_corners_b = {
-    Point2{8192.0, 0.0}, Point2{16384.0, 0.0}, Point2{16384.0, 8192.0},
-    Point2{8192.0, 8192.0}
+    pt(8192.0, 0.0), pt(16384.0, 0.0), pt(16384.0, 8192.0), pt(8192.0, 8192.0)
   };
   Quad dst_a{};
   Quad dst_b{};
@@ -126,10 +129,10 @@ void test_adjacent_tiles_map_their_shared_edge_onto_one_line() {
   TEST_ASSERT_TRUE(homography_b.has_value());
 
   // The shared corners (A's right edge equals B's left edge) match exactly.
-  const Point2 top_a = apply_homography(*homography_a, Point2{8192.0, 0.0});
-  const Point2 top_b = apply_homography(*homography_b, Point2{0.0, 0.0});
-  const Point2 bot_a = apply_homography(*homography_a, Point2{8192.0, 8192.0});
-  const Point2 bot_b = apply_homography(*homography_b, Point2{0.0, 8192.0});
+  const Point2 top_a = apply_homography(*homography_a, pt(8192.0, 0.0));
+  const Point2 top_b = apply_homography(*homography_b, pt(0.0, 0.0));
+  const Point2 bot_a = apply_homography(*homography_a, pt(8192.0, 8192.0));
+  const Point2 bot_b = apply_homography(*homography_b, pt(0.0, 8192.0));
   TEST_ASSERT_DOUBLE_WITHIN(1e-12, top_b.x, top_a.x);
   TEST_ASSERT_DOUBLE_WITHIN(1e-12, top_b.y, top_a.y);
   TEST_ASSERT_DOUBLE_WITHIN(1e-12, bot_b.x, bot_a.x);
@@ -140,8 +143,8 @@ void test_adjacent_tiles_map_their_shared_edge_onto_one_line() {
   // meeting at the tile boundary leaves no gap or overlap.
   for (const double along : {0.25, 0.5, 0.75}) {
     const std::array<Point2, 2> probes = {
-      apply_homography(*homography_a, Point2{8192.0, 8192.0 * along}),
-      apply_homography(*homography_b, Point2{0.0, 8192.0 * along}),
+      apply_homography(*homography_a, pt(8192.0, 8192.0 * along)),
+      apply_homography(*homography_b, pt(0.0, 8192.0 * along)),
     };
     for (const Point2& probe : probes) {
       const double cross = ((bot_a.x - top_a.x) * (probe.y - top_a.y)) -
@@ -153,14 +156,13 @@ void test_adjacent_tiles_map_their_shared_edge_onto_one_line() {
 
 void test_mat4_embedding_matches_the_homography_and_pins_z_to_zero() {
   const Quad dst = {
-    Point2{-0.9, 0.8}, Point2{0.7, 0.85}, Point2{0.75, -0.6},
-    Point2{-0.85, -0.65}
+    pt(-0.9, 0.8), pt(0.7, 0.85), pt(0.75, -0.6), pt(-0.85, -0.65)
   };
   const auto homography = solve_homography_4pt(kTileCorners, dst);
   TEST_ASSERT_TRUE(homography.has_value());
   const Mat4 mat = homography_to_mat4(*homography);
   // Column-major application of mat * vec4(x, y, 0, 1).
-  const Point2 probe{3000.0, 5000.0};
+  const Point2 probe = pt(3000.0, 5000.0);
   const double out_x = (mat[0] * probe.x) + (mat[4] * probe.y) + mat[12];
   const double out_y = (mat[1] * probe.x) + (mat[5] * probe.y) + mat[13];
   const double out_z = (mat[2] * probe.x) + (mat[6] * probe.y) + mat[14];

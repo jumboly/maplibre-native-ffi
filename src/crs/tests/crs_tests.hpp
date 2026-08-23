@@ -10,3 +10,4 @@
 // must be declared here and called from `main.cpp`.
 
 void run_homography_tests();
+void run_tmerc_tests();
