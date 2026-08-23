@@ -9,6 +9,7 @@ extern "C" void tearDown() {}
 auto main() -> int {
   UNITY_BEGIN();
   run_homography_tests();
+  run_jprcs_tests();
   run_tmerc_tests();
   return UNITY_END();
 }
