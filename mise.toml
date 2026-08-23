@@ -76,6 +76,7 @@ doc2go_version = "0.12.2"
 gofumpt_version = "0.10.0"
 google_java_format_version = "1.35.0"
 flutter_version = "3.44.8"
+gdal_version = "3.13.3"
 hk_version = "1.45.0"
 java_version = "zulu-25.34.17.0"
 jvl_version = "2026.05.03"
@@ -117,6 +118,10 @@ sccache = "{{vars.sccache_version}}"
 # Python ecosystem
 "core:python" = "{{vars.python_version}}"
 "aqua:astral-sh/uv" = "{{vars.uv_version}}"
+
+# GDAL (gdalwarp) reprojects the render-crs phase-0 comparison renders; see
+# plans/render-crs/phase0/. Remove when that comparison baseline retires.
+"conda:gdal" = { version = "{{vars.gdal_version}}", os = ["linux", "macos"] }
 
 # SwiftFormat is a standalone repository formatter and does not require the
 # Swift compiler.
