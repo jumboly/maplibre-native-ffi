@@ -30,6 +30,9 @@
   ラベルの直立・collision box の向き）のみ
 - rotation の基準は**座標北（grid north）**。真北基準にしたい呼び出し側は子午線
   収差 γ を自分で足す。回転方向は既存 `bearing` の規約に合わせて実装時に確定
+  - フェーズ 2 で数学層規約を確定（→ [09](09-phase2-results.md)）:
+    `rotation_deg` は「出力画像の上方向が指す座標北からの方位角（時計回り正、
+    度）」。`bearing` との符号照合のみフェーズ 3 に残し、逆でも統合層で吸収する
 - **pitch は non-goal**: 「w = cameraToCenterDistance 定数で透視を殺す」核心
   トリックが崩れ、symbol 遠近補正・collision perspectiveRatio・視錐台被覆が
   すべて再開封になるため
