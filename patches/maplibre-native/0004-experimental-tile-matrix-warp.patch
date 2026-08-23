@@ -1,0 +1,66 @@
+diff --git a/src/mbgl/map/transform_state.cpp b/src/mbgl/map/transform_state.cpp
+index 2505c92..970c718 100644
+--- a/src/mbgl/map/transform_state.cpp
++++ b/src/mbgl/map/transform_state.cpp
+@@ -9,7 +9,9 @@
+ #include <mbgl/util/projection.hpp>
+ #include <mbgl/util/tile_coordinate.hpp>
+ 
++#include <cstdlib>
+ #include <numbers>
++#include <optional>
+ 
+ using namespace std::numbers;
+ 
+@@ -112,6 +114,40 @@ void TransformState::setProperties(const TransformStateProperties& properties) {
+ 
+ // MARK: - Matrix
+ 
++namespace {
++
++// Experimental instrumentation for the render-crs phase-1 hypothesis check:
++// MLN_TILE_MATRIX_WARP holds 16 comma-separated numbers forming a column-major
++// mat4 that is left-multiplied onto every tile matrix, i.e. a warp applied in
++// world (mercator pixel) space. Parsed once because matrixFor runs for every
++// tile on every frame. Unset means upstream behavior.
++const mat4* experimentalTileMatrixWarp() {
++    static const std::optional<mat4> warp = []() -> std::optional<mat4> {
++        const char* spec = std::getenv("MLN_TILE_MATRIX_WARP");
++        if (!spec) {
++            return std::nullopt;
++        }
++        mat4 parsed;
++        const char* cursor = spec;
++        for (double& element : parsed) {
++            char* end = nullptr;
++            element = std::strtod(cursor, &end);
++            if (end == cursor) {
++                Log::Error(Event::General, "Ignoring malformed MLN_TILE_MATRIX_WARP (expected 16 numbers)");
++                return std::nullopt;
++            }
++            cursor = end;
++            while (*cursor == ',' || *cursor == ' ') {
++                ++cursor;
++            }
++        }
++        return parsed;
++    }();
++    return warp ? &*warp : nullptr;
++}
++
++} // namespace
++
+ void TransformState::matrixFor(mat4& matrix, const UnwrappedTileID& tileID) const {
+     const uint64_t tileScale = 1ull << tileID.canonical.z;
+     const double s = Projection::worldSize(scale) / tileScale;
+@@ -123,6 +159,10 @@ void TransformState::matrixFor(mat4& matrix, const UnwrappedTileID& tileID) cons
+                       int64_t(tileID.canonical.y) * s,
+                       0);
+     matrix::scale(matrix, matrix, s / util::EXTENT, s / util::EXTENT, 1);
++
++    if (const mat4* warp = experimentalTileMatrixWarp()) {
++        matrix::multiply(matrix, *warp, matrix);
++    }
+ }
+ 
+ void TransformState::getProjMatrix(mat4& projMatrix, uint16_t nearZ, bool aligned) const {

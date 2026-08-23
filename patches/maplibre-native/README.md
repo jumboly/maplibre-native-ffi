@@ -15,6 +15,14 @@ resources whose paths contain spaces or non-ASCII characters.
 uses it to bound one pump's drain; the budget logic stays on the C API side, and
 an unset gate keeps upstream behavior.
 
+`0004-experimental-tile-matrix-warp.patch` is temporary instrumentation for the
+render-crs phase-1 hypothesis check (`plans/render-crs/`), to be replaced by a
+proper tile-matrix hook in a later phase rather than upstreamed as is. It makes
+`TransformState::matrixFor()` left-multiply every tile matrix by a world-space
+mat4 read once from the `MLN_TILE_MATRIX_WARP` environment variable (16
+comma-separated column-major numbers). An unset variable keeps upstream
+behavior.
+
 Drop a patch once the pin moves to a commit that carries it. The sync checks out
 the pinned commit with `--force`, so it discards whatever the last sync applied
 before applying the list again. A pin bump, an edit to a patch, and a dropped

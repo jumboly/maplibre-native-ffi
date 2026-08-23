@@ -112,3 +112,26 @@ source of truth は `plans/render-crs/`。
 2. `render_crs` ドメイン → コアにフックが入った後で ffi 本体へ提案（ffi の
    スコープは「MapLibre Native の概念を直接露出」であり、コアに概念が存在しない
    間は fork に置くしかない、という順序依存がある）
+
+## 5. フック形態: `TransformState` の `std::function` メンバ（2026-08-23、フェーズ 1 で確定）
+
+タイル行列フックは **`TransformState` に `std::function`
+型のプロバイダをメンバ追加し、`matrixFor()` 末尾で呼ぶ**形とする（04 §2 の候補
+1）。根拠はフェーズ 1 の実証（→ [08](08-phase1-results.md)）:
+
+- `matrixFor` 1 箇所への注入で、描画 3 チョークポイント・CPU
+  placement/collision・ヒットテスト・ステンシルクリップマスクのすべてが
+  一貫して追従する（全レイヤで目視確認済み）
+- `TransformState` は暗黙メンバワイズコピーのため、`std::function` メンバは
+  Placement / CollisionIndex / TileCoverParameters / Snapshotter への値コピーで
+  自然に伝播する
+- 不採用: `matrixFor` / placement 投影の virtual 化（04 §2 の候補 2）。
+  影響範囲が広く、伝播もコピー方式より複雑になる
+
+付随する確定事項:
+
+- tile_cover はタイル選択が行列に追従しない（z15.55 + 10° 回転で欠けを実測）
+  ため、04 §2 #3 の余白フックを予定どおり実装する
+- projMatrix の合成はチョークポイント側で行われるため、フェーズ 3 の
+  ホモグラフィ完全適用は「プロバイダが `P⁻¹·H` を返す」案と「合成バイパスの 第 2
+  フック」案から実装時に選ぶ

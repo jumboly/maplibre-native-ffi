@@ -58,6 +58,7 @@ MapLibre Native を日本の平面直角座標系（JGD2011 I〜XIX 系、EPSG:6
 | [05-ffi-integration.md](05-ffi-integration.md)                       | 本リポジトリ（maplibre-native-ffi fork）での実装設計。パッチ機構への統合、C API ドメイン `render_crs`、各言語バインディングのコスト、fork 運用 |
 | [06-decisions.md](06-decisions.md)                                   | 確定済み設計判断の記録（再提案禁止）。命名・スコープ・API 形状・fork 運用                                                                      |
 | [07-phase0-results.md](07-phase0-results.md)                         | フェーズ 0（比較基盤）の検証結果。パイプラインは [phase0/](phase0/README.md)                                                                   |
+| [08-phase1-results.md](08-phase1-results.md)                         | フェーズ 1（仮説検証）の結果。タイル毎 mat4 集約の実証とフック形態の確定。手順は [phase1/](phase1/README.md)                                   |
 
 ## 前提・スコープ
 
