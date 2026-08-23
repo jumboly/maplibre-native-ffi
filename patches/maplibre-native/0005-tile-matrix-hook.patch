@@ -1,0 +1,129 @@
+diff --git a/include/mbgl/map/map.hpp b/include/mbgl/map/map.hpp
+index be32bd7..a9cd03e 100644
+--- a/include/mbgl/map/map.hpp
++++ b/include/mbgl/map/map.hpp
+@@ -11,6 +11,7 @@
+ #include <mbgl/map/camera.hpp>
+ #include <mbgl/util/geometry.hpp>
+ #include <mbgl/map/projection_mode.hpp>
++#include <mbgl/map/tile_matrix_hook.hpp>
+ #include <mbgl/storage/resource_options.hpp>
+ #include <mbgl/util/client_options.hpp>
+ #include <mbgl/util/action_journal_options.hpp>
+@@ -115,6 +116,10 @@ public:
+     void setProjectionMode(const ProjectionMode&);
+     ProjectionMode getProjectionMode() const;
+ 
++    // Experimental: replaces the per-tile matrix computed by the transform.
++    // The hook must be thread-safe; pass nullptr to restore default behavior.
++    void setTileMatrixHook(TileMatrixHook hook);
++
+     // Projection
+     ScreenCoordinate pixelForLatLng(const LatLng&) const;
+     LatLng latLngForPixel(const ScreenCoordinate&) const;
+diff --git a/include/mbgl/map/tile_matrix_hook.hpp b/include/mbgl/map/tile_matrix_hook.hpp
+new file mode 100644
+index 0000000..702f0d0
+--- /dev/null
++++ b/include/mbgl/map/tile_matrix_hook.hpp
+@@ -0,0 +1,22 @@
++#pragma once
++
++#include <mbgl/util/mat4.hpp>
++
++#include <functional>
++
++namespace mln {
++
++class TransformState;
++class UnwrappedTileID;
++
++// Experimental hook that replaces the per-tile matrix computed by
++// TransformState::matrixFor. The hook receives the default tile matrix
++// (tile-local coordinates to world pixels) already written to `tileMatrix`
++// and may overwrite it in place; leaving it untouched keeps the default
++// behavior. TransformState instances are copied by value across render,
++// placement, and tile-cover code paths, so the hook shares one underlying
++// callable between threads and must be stateless and thread-safe.
++using TileMatrixHook =
++    std::function<void(mat4& tileMatrix, const UnwrappedTileID& tileID, const TransformState& state)>;
++
++} // namespace mln
+diff --git a/src/mbgl/map/map.cpp b/src/mbgl/map/map.cpp
+index 6ccc834..e94d2e3 100644
+--- a/src/mbgl/map/map.cpp
++++ b/src/mbgl/map/map.cpp
+@@ -421,6 +421,13 @@ ProjectionMode Map::getProjectionMode() const {
+     return impl->transform.getProjectionMode();
+ }
+ 
++// MARK: - Tile matrix hook
++
++void Map::setTileMatrixHook(TileMatrixHook hook) {
++    impl->transform.setTileMatrixHook(std::move(hook));
++    impl->onUpdate();
++}
++
+ // MARK: - Projection
+ 
+ ScreenCoordinate Map::pixelForLatLng(const LatLng& latLng) const {
+diff --git a/src/mbgl/map/transform.hpp b/src/mbgl/map/transform.hpp
+index 1976a12..f0389bc 100644
+--- a/src/mbgl/map/transform.hpp
++++ b/src/mbgl/map/transform.hpp
+@@ -123,6 +123,7 @@ public:
+ 
+     // Transform state
+     const TransformState& getState() const { return state; }
++    void setTileMatrixHook(TileMatrixHook hook) { state.setTileMatrixHook(std::move(hook)); }
+     bool isRotating() const { return state.isRotating(); }
+     bool isScaling() const { return state.isScaling(); }
+     bool isPanning() const { return state.isPanning(); }
+diff --git a/src/mbgl/map/transform_state.cpp b/src/mbgl/map/transform_state.cpp
+index 2505c92..719e102 100644
+--- a/src/mbgl/map/transform_state.cpp
++++ b/src/mbgl/map/transform_state.cpp
+@@ -123,6 +123,10 @@ void TransformState::matrixFor(mat4& matrix, const UnwrappedTileID& tileID) cons
+                       int64_t(tileID.canonical.y) * s,
+                       0);
+     matrix::scale(matrix, matrix, s / util::EXTENT, s / util::EXTENT, 1);
++
++    if (tileMatrixHook) {
++        tileMatrixHook(matrix, tileID, *this);
++    }
+ }
+ 
+ void TransformState::getProjMatrix(mat4& projMatrix, uint16_t nearZ, bool aligned) const {
+diff --git a/src/mbgl/map/transform_state.hpp b/src/mbgl/map/transform_state.hpp
+index bfd42d3..5dd722b 100644
+--- a/src/mbgl/map/transform_state.hpp
++++ b/src/mbgl/map/transform_state.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include <mbgl/map/camera.hpp>
+ #include <mbgl/map/mode.hpp>
++#include <mbgl/map/tile_matrix_hook.hpp>
+ #include <mbgl/util/camera.hpp>
+ #include <mbgl/util/constants.hpp>
+ #include <mbgl/util/geo.hpp>
+@@ -134,6 +135,10 @@ public:
+     void matrixFor(mat4&, const UnwrappedTileID&) const;
+     void getProjMatrix(mat4& matrix, uint16_t nearZ = 1, bool aligned = false) const;
+ 
++    // Experimental hook called at the end of matrixFor; see tile_matrix_hook.hpp.
++    void setTileMatrixHook(TileMatrixHook hook) { tileMatrixHook = std::move(hook); }
++    const TileMatrixHook& getTileMatrixHook() const { return tileMatrixHook; }
++
+     // Dimensions
+     Size getSize() const;
+     void setSize(const Size& size_);
+@@ -282,6 +287,9 @@ private:
+     Size size;
+     EdgeInsets frustumOffset;
+ 
++    // Optional matrixFor override; propagated by memberwise copies of this state.
++    TileMatrixHook tileMatrixHook;
++
+     mat4 coordinatePointMatrix(const mat4& projMatrix) const;
+     mat4 getPixelMatrix() const;
+ 

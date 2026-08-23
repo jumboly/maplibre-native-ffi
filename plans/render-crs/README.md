@@ -60,6 +60,7 @@ MapLibre Native を日本の平面直角座標系（JGD2011 I〜XIX 系、EPSG:6
 | [07-phase0-results.md](07-phase0-results.md)                         | フェーズ 0（比較基盤）の検証結果。パイプラインは [phase0/](phase0/README.md)                                                                   |
 | [08-phase1-results.md](08-phase1-results.md)                         | フェーズ 1（仮説検証）の結果。タイル毎 mat4 集約の実証とフック形態の確定。手順は [phase1/](phase1/README.md)                                   |
 | [09-phase2-results.md](09-phase2-results.md)                         | フェーズ 2（数学層移植）の結果。`src/crs/` の外部検証合格と移植時の設計決定                                                                    |
+| [10-phase3-results.md](10-phase3-results.md)                         | フェーズ 3（PoC）の結果。フック・パッチ + 最小 C API で都庁 IX 系 1:5000 を出力し受け入れ合格。手順は [phase3/](phase3/README.md)              |
 
 ## 前提・スコープ
 

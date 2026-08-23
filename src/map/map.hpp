@@ -38,6 +38,7 @@ auto premultiplied_rgba8_image_default() noexcept
   -> mln_premultiplied_rgba8_image;
 auto style_image_options_default() noexcept -> mln_style_image_options;
 auto style_image_info_default() noexcept -> mln_style_image_info;
+auto render_crs_options_default() noexcept -> mln_render_crs_options;
 auto style_transition_options_default() noexcept
   -> mln_style_transition_options;
 auto create_map(
@@ -344,6 +345,9 @@ auto map_get_projection_mode(mln_map map, mln_projection_mode* out_mode)
   -> mln_status;
 auto map_set_projection_mode(mln_map map, const mln_projection_mode* mode)
   -> mln_status;
+auto map_set_render_crs(mln_map map, const mln_render_crs_options* options)
+  -> mln_status;
+auto map_clear_render_crs(mln_map map) -> mln_status;
 auto map_set_debug_options(mln_map map, uint32_t options) -> mln_status;
 auto map_get_debug_options(mln_map map, uint32_t* out_options) -> mln_status;
 auto map_set_rendering_stats_view_enabled(mln_map map, bool enabled)

@@ -1,5 +1,10 @@
 # フェーズ 1: 仮説検証（タイル行列への歪み注入）
 
+> **注**: 実験パッチ 0004 はフェーズ 3 で本番のタイル行列フック
+> （`0005-tile-matrix-hook.patch`）に置き換えて削除した。本手順を再現する 場合は
+> 0004 が存在した当時のコミット（フェーズ 2 完了時点 `5c2c18d7`）を checkout
+> すること。
+
 [04-recommended-design.md](../04-recommended-design.md) §8 フェーズ 1 の実装。
 実験パッチ `patches/maplibre-native/0004-experimental-tile-matrix-warp.patch` が
 `TransformState::matrixFor()` の出力へ環境変数 `MLN_TILE_MATRIX_WARP`
