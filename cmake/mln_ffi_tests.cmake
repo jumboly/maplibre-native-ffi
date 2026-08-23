@@ -315,8 +315,11 @@ function(mln_ffi_add_crs_test)
 
   add_executable(mln_ffi_crs_tests)
   mln_ffi_target_project_sources(
-    mln_ffi_crs_tests ${PROJECT_SOURCE_DIR}/src/crs/tests/main.cpp
-    ${crs_test_sources} ${PROJECT_SOURCE_DIR}/src/crs/homography.cpp
+    mln_ffi_crs_tests
+    ${PROJECT_SOURCE_DIR}/src/crs/tests/main.cpp
+    ${crs_test_sources}
+    ${PROJECT_SOURCE_DIR}/src/crs/extent.cpp
+    ${PROJECT_SOURCE_DIR}/src/crs/homography.cpp
     ${PROJECT_SOURCE_DIR}/src/crs/jprcs.cpp
     ${PROJECT_SOURCE_DIR}/src/crs/tmerc.cpp)
   set_target_properties(
