@@ -87,9 +87,10 @@ zoom は `equivalentZoom(scale, centerLat)`（96dpi の CSS px 基準）、物�
      （端部変位は数 px 以内）。
    - **根室（XIII 系、γ≈0.92°）**: Mercator レンダに対し**明確な回転**が正解
      （画像端で ≈9px の変位。計測ツールで確認する）。
-5. 品質評価: ラベル・道路縁の 100%/200% 拡大クロップをリサンプラ 3
-   変種で並置し、 滲み・細線の潰れを記録 → 所見を
-   [../07-phase0-results.md](../07-phase0-results.md) へ。案 C
+5. 品質評価: `mise exec -- python crop_compare.py` が同一箇所の 4 倍拡大クロップ
+   （Mercator 元画像 + リサンプラ 3 変種、3 領域）を `crops/` に生成する。並置で
+   滲み・細線の潰れを記録 → 所見は
+   [../07-phase0-results.md](../07-phase0-results.md) に記入済み。案 C
    の品質限界の実証が、フック方式（フェーズ 3）の受け入れ基準になる。
 
 方眼の定量検証が必要になったら、GL JS 版 `demo/grid.ts`（100m 格子 GeoJSON の
