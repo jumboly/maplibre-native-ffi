@@ -1,0 +1,131 @@
+diff --git a/include/mbgl/map/map.hpp b/include/mbgl/map/map.hpp
+index a9cd03e..4ca76b3 100644
+--- a/include/mbgl/map/map.hpp
++++ b/include/mbgl/map/map.hpp
+@@ -101,6 +101,12 @@ public:
+     /// Returns the current map bound options. All optional fields in BoundOptions are set.
+     BoundOptions getBounds() const;
+ 
++    /// Experimental: constrains tile-cover selection to these bounds instead
++    /// of the view frustum. Used together with setTileMatrixHook when the
++    /// hook's output is not described by the frustum; pass std::nullopt to
++    /// restore default behavior.
++    void setTileCoverBoundsOverride(std::optional<LatLngBounds> bounds);
++
+     /// @}
+ 
+     // Map Options
+diff --git a/src/mbgl/map/map.cpp b/src/mbgl/map/map.cpp
+index e94d2e3..280a9f5 100644
+--- a/src/mbgl/map/map.cpp
++++ b/src/mbgl/map/map.cpp
+@@ -368,6 +368,11 @@ BoundOptions Map::getBounds() const {
+         .withMaxPitch(util::rad2deg(impl->transform.getState().getMaxPitch()));
+ }
+ 
++void Map::setTileCoverBoundsOverride(std::optional<LatLngBounds> bounds) {
++    impl->transform.setTileCoverBoundsOverride(std::move(bounds));
++    impl->onUpdate();
++}
++
+ // MARK: - Map options
+ 
+ void Map::setSize(const Size size) {
+diff --git a/src/mbgl/map/transform.hpp b/src/mbgl/map/transform.hpp
+index f0389bc..bf62be0 100644
+--- a/src/mbgl/map/transform.hpp
++++ b/src/mbgl/map/transform.hpp
+@@ -139,6 +139,11 @@ public:
+     void setFrustumOffset(const EdgeInsets&);
+     EdgeInsets getFrustumOffset();
+ 
++    // Tile cover
++    void setTileCoverBoundsOverride(std::optional<LatLngBounds> bounds) {
++        state.setTileCoverBoundsOverride(std::move(bounds));
++    }
++
+ private:
+     TransformObserver& observer;
+     TransformState state;
+diff --git a/src/mbgl/map/transform_state.hpp b/src/mbgl/map/transform_state.hpp
+index 5dd722b..e92dd8f 100644
+--- a/src/mbgl/map/transform_state.hpp
++++ b/src/mbgl/map/transform_state.hpp
+@@ -262,6 +262,14 @@ public:
+     FreeCameraOptions getFreeCameraOptions() const;
+     void setFreeCameraOptions(const FreeCameraOptions& options);
+ 
++    // Experimental: when set, tile-cover selection intersects tiles against
++    // these bounds instead of the view frustum. Used together with a tile
++    // matrix hook whose output the frustum does not describe.
++    void setTileCoverBoundsOverride(std::optional<LatLngBounds> bounds_) {
++        tileCoverBoundsOverride = std::move(bounds_);
++    }
++    const std::optional<LatLngBounds>& getTileCoverBoundsOverride() const { return tileCoverBoundsOverride; }
++
+ private:
+     bool rotatedNorth() const;
+ 
+@@ -316,6 +324,9 @@ private:
+     bool panning = false;
+     bool gestureInProgress = false;
+ 
++    // Optional tile-cover bounds; propagated by memberwise copies of this state.
++    std::optional<LatLngBounds> tileCoverBoundsOverride;
++
+     // map position
+     double x = 0, y = 0, z = 0;
+     double bearing = 0;
+diff --git a/src/mbgl/util/tile_cover.cpp b/src/mbgl/util/tile_cover.cpp
+index 6847894..25801a4 100644
+--- a/src/mbgl/util/tile_cover.cpp
++++ b/src/mbgl/util/tile_cover.cpp
+@@ -210,6 +210,30 @@ std::vector<OverscaledTileID> tileCover(const TileCoverParameters& state,
+ 
+     const Frustum frustum = Frustum::fromInvProjMatrix(transform.getInvProjectionMatrix(), worldSize, z, flippedY);
+ 
++    // Optional explicit cover bounds (see TransformState::setTileCoverBoundsOverride):
++    // tile selection intersects against this AABB instead of the view frustum,
++    // expressed in the same z-level tile units as the traversal nodes below.
++    std::optional<AABB> coverOverride;
++    if (const auto& coverBounds = transform.getTileCoverBoundsOverride()) {
++        const auto northwest = Projection::project(coverBounds->northwest(), transform.getScale());
++        const auto southeast = Projection::project(coverBounds->southeast(), transform.getScale());
++        const double tilesPerPixel = numTiles / worldSize;
++        coverOverride = AABB({{northwest.x * tilesPerPixel, northwest.y * tilesPerPixel, 0.0}},
++                             {{southeast.x * tilesPerPixel, southeast.y * tilesPerPixel, 0.0}});
++    }
++
++    const auto intersectsCover = [&](const AABB& aabb, bool precise) {
++        if (coverOverride) {
++            if (!coverOverride->intersects(aabb)) {
++                return IntersectionResult::Separate;
++            }
++            const bool contains = coverOverride->min[0] <= aabb.min[0] && aabb.max[0] <= coverOverride->max[0] &&
++                                  coverOverride->min[1] <= aabb.min[1] && aabb.max[1] <= coverOverride->max[1];
++            return contains ? IntersectionResult::Contains : IntersectionResult::Intersects;
++        }
++        return precise ? frustum.intersectsPrecise(aabb, true) : frustum.intersects(aabb);
++    };
++
+     // There should always be a certain number of maximum zoom level tiles
+     // surrounding the center location
+     assert(state.tileLodMinRadius >= 1);
+@@ -243,7 +267,7 @@ std::vector<OverscaledTileID> tileCover(const TileCoverParameters& state,
+ 
+         // Use cached visibility information of ancestor nodes
+         if (!node.fullyVisible) {
+-            const IntersectionResult intersection = frustum.intersects(node.aabb);
++            const IntersectionResult intersection = intersectsCover(node.aabb, false);
+ 
+             if (intersection == IntersectionResult::Separate) continue;
+ 
+@@ -283,7 +307,7 @@ std::vector<OverscaledTileID> tileCover(const TileCoverParameters& state,
+         if (node.zoom == maxZoom || (!shouldSplitTile && node.zoom >= minZoom)) {
+             // Perform precise intersection test between the frustum and aabb.
+             // This will cull < 1% false positives missed by the original test
+-            if (node.fullyVisible || frustum.intersectsPrecise(node.aabb, true) != IntersectionResult::Separate) {
++            if (node.fullyVisible || intersectsCover(node.aabb, true) != IntersectionResult::Separate) {
+                 const OverscaledTileID id = {
+                     node.zoom == maxZoom ? overscaledZoom : node.zoom, node.wrap, node.zoom, node.x, node.y};
+                 vec3 coordToLoadFirst = (state.tileLodMode == TileLodMode::Distance) ? cameraCoord : centerCoord;

@@ -96,6 +96,7 @@ function(mln_ffi_configure_c_api_implementation target)
       ${PROJECT_SOURCE_DIR}/src/c_api/logging.cpp
       ${PROJECT_SOURCE_DIR}/src/c_api/map.cpp
       ${PROJECT_SOURCE_DIR}/src/c_api/network.cpp
+      ${PROJECT_SOURCE_DIR}/src/c_api/render_crs.cpp
       ${PROJECT_SOURCE_DIR}/src/c_api/render_session.cpp
       ${PROJECT_SOURCE_DIR}/src/c_api/runtime.cpp
       ${PROJECT_SOURCE_DIR}/src/c_api/surface.cpp
@@ -104,6 +105,7 @@ function(mln_ffi_configure_c_api_implementation target)
       ${PROJECT_SOURCE_DIR}/src/crs/extent.cpp
       ${PROJECT_SOURCE_DIR}/src/crs/homography.cpp
       ${PROJECT_SOURCE_DIR}/src/crs/jprcs.cpp
+      ${PROJECT_SOURCE_DIR}/src/crs/provider.cpp
       ${PROJECT_SOURCE_DIR}/src/crs/tmerc.cpp
       ${PROJECT_SOURCE_DIR}/src/diagnostics/diagnostics.cpp
       ${PROJECT_SOURCE_DIR}/src/geojson/geojson.cpp

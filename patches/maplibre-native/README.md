@@ -15,13 +15,22 @@ resources whose paths contain spaces or non-ASCII characters.
 uses it to bound one pump's drain; the budget logic stays on the C API side, and
 an unset gate keeps upstream behavior.
 
-`0004-experimental-tile-matrix-warp.patch` is temporary instrumentation for the
-render-crs phase-1 hypothesis check (`plans/render-crs/`), to be replaced by a
-proper tile-matrix hook in a later phase rather than upstreamed as is. It makes
-`TransformState::matrixFor()` left-multiply every tile matrix by a world-space
-mat4 read once from the `MLN_TILE_MATRIX_WARP` environment variable (16
-comma-separated column-major numbers). An unset variable keeps upstream
-behavior.
+`0005-tile-matrix-hook.patch` adds `Map::setTileMatrixHook()`: a `std::function`
+member on `TransformState`, called at the end of `matrixFor()` with the default
+tile matrix already computed, that may overwrite the matrix in place. The hook
+propagates through the memberwise copies of `TransformState` that reach
+placement, collision, and tile cover, so one injection point covers the GPU and
+CPU consumers alike. The render-crs subsystem (`plans/render-crs/`) registers a
+per-tile homography here; the hook itself carries no CRS knowledge, and an unset
+hook keeps upstream behavior. This patch replaces the phase-1 instrumentation
+patch `0004-experimental-tile-matrix-warp.patch`.
+
+`0006-tile-cover-bounds-override.patch` adds
+`Map::setTileCoverBoundsOverride()`: an optional `LatLngBounds` on
+`TransformState` that tile-cover selection intersects tiles against instead of
+the view frustum. Tile selection reads only the inverse projection matrix and so
+does not follow a tile matrix hook; the override names the covered region
+explicitly. An unset override keeps upstream behavior.
 
 Drop a patch once the pin moves to a commit that carries it. The sync checks out
 the pinned commit with `--force`, so it discards whatever the last sync applied

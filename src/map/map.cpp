@@ -81,6 +81,8 @@
 #include "map/map.hpp"
 
 #include "bytes/buffer.hpp"
+#include "crs/jprcs.hpp"
+#include "crs/provider.hpp"
 #include "diagnostics/diagnostics.hpp"
 #include "geojson/geojson.hpp"
 #include "geojson/geojson_source_data.hpp"
@@ -2468,6 +2470,59 @@ auto validate_projection_mode_options(const mln_projection_mode* mode)
   return MLN_STATUS_OK;
 }
 
+auto validate_render_crs_options(const mln_render_crs_options* options)
+  -> mln_status {
+  if (options == nullptr) {
+    mln::core::set_thread_error("render CRS options must not be null");
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  if (options->size < sizeof(mln_render_crs_options)) {
+    mln::core::set_thread_error("mln_render_crs_options.size is too small");
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  if (options->crs_kind != MLN_CRS_JAPAN_PLANE_RECTANGULAR) {
+    mln::core::set_thread_error(
+      "mln_render_crs_options.crs_kind is not a known CRS kind"
+    );
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  if (
+    options->zone < 1 ||
+    options->zone > static_cast<uint32_t>(mln::crs::kJprcsZoneCount)
+  ) {
+    mln::core::set_thread_error(
+      "mln_render_crs_options.zone must be within 1..19"
+    );
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  if (
+    !std::isfinite(options->meters_per_pixel) ||
+    options->meters_per_pixel <= 0.0
+  ) {
+    mln::core::set_thread_error(
+      "mln_render_crs_options.meters_per_pixel must be positive and finite"
+    );
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  if (
+    !std::isfinite(options->center_easting) ||
+    !std::isfinite(options->center_northing) ||
+    !std::isfinite(options->rotation)
+  ) {
+    mln::core::set_thread_error(
+      "render CRS center and rotation must be finite"
+    );
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  return MLN_STATUS_OK;
+}
+
 auto validate_debug_options(uint32_t options) -> mln_status {
   constexpr auto known_options =
     static_cast<uint32_t>(MLN_MAP_DEBUG_TILE_BORDERS) |
@@ -3411,6 +3466,18 @@ auto map_options_default() noexcept -> mln_map_options {
     .map_mode = MLN_MAP_MODE_CONTINUOUS,
     .fast_pfor_enabled = false,
     .event_mask = MLN_RUNTIME_EVENT_MASK_ALL
+  };
+}
+
+auto render_crs_options_default() noexcept -> mln_render_crs_options {
+  return mln_render_crs_options{
+    .size = sizeof(mln_render_crs_options),
+    .crs_kind = MLN_CRS_JAPAN_PLANE_RECTANGULAR,
+    .zone = 0,  // no meaningful default zone; the caller must pick one
+    .center_easting = 0.0,
+    .center_northing = 0.0,
+    .meters_per_pixel = 1.0,
+    .rotation = 0.0
   };
 }
 
@@ -7137,6 +7204,64 @@ auto map_set_projection_mode(mln_map map, const mln_projection_mode* mode)
   }
 
   live->map->setProjectionMode(to_native_projection_mode(*mode));
+  return MLN_STATUS_OK;
+}
+
+auto map_set_render_crs(mln_map map, const mln_render_crs_options* options)
+  -> mln_status {
+  MapObject* live = nullptr;
+  const auto status = validate_map(map, live);
+  if (status != MLN_STATUS_OK) {
+    return status;
+  }
+  const auto options_status = validate_render_crs_options(options);
+  if (options_status != MLN_STATUS_OK) {
+    return options_status;
+  }
+
+  // The extent is sized in physical pixels the same way an owned texture
+  // target sizes its framebuffer: ceil(logical * scale factor).
+  const auto logical = live->map->getMapOptions().size();
+  const auto physical_width =
+    static_cast<uint32_t>(std::ceil(logical.width * live->scale_factor));
+  const auto physical_height =
+    static_cast<uint32_t>(std::ceil(logical.height * live->scale_factor));
+  if (physical_width == 0 || physical_height == 0) {
+    set_thread_error("map physical size must be positive");
+    return MLN_STATUS_INVALID_ARGUMENT;
+  }
+
+  auto setup = mln::crs::make_jprcs_render_crs(
+    static_cast<int>(options->zone),
+    {.easting = options->center_easting, .northing = options->center_northing},
+    options->meters_per_pixel, options->rotation, physical_width,
+    physical_height, live->scale_factor
+  );
+
+  // The camera is derived, not chosen: zoom must match the output resolution
+  // for tile selection and style evaluation, and center must match the
+  // extent, or the picture and the homography disagree. Bearing stays 0
+  // because rotation is carried by the tile matrices.
+  live->map->jumpTo(
+    mln::CameraOptions()
+      .withCenter(setup.camera_center)
+      .withZoom(setup.camera_zoom)
+      .withBearing(0.0)
+      .withPitch(0.0)
+  );
+  live->map->setTileMatrixHook(std::move(setup.hook));
+  live->map->setTileCoverBoundsOverride(setup.cover_bounds);
+  return MLN_STATUS_OK;
+}
+
+auto map_clear_render_crs(mln_map map) -> mln_status {
+  MapObject* live = nullptr;
+  const auto status = validate_map(map, live);
+  if (status != MLN_STATUS_OK) {
+    return status;
+  }
+  live->map->setTileMatrixHook(nullptr);
+  live->map->setTileCoverBoundsOverride(std::nullopt);
   return MLN_STATUS_OK;
 }
 
